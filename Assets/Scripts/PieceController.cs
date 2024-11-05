@@ -5,8 +5,11 @@ using UnityEngine;
 public class PieceController : MonoBehaviour
 {
     public GameController GameController;
+    public TestBot testbot;
     public GameObject WhitePieces;
+    public GameObject[] whitePieceArray;
     public GameObject BlackPieces;
+    public GameObject[] blackPieceArray;
     public Sprite QueenSprite;
 
     public float MoveSpeed = 20;
@@ -26,12 +29,25 @@ public class PieceController : MonoBehaviour
     private Vector3 newPositionX;
 
     private bool moved = false;
+    bool check = false;
 
     // Use this for initialization
     void Start()
     {
         if (GameController == null) GameController = FindObjectOfType<GameController>();
+        if (testbot == null) testbot = FindObjectOfType<TestBot>();
         if (this.name.Contains("Knight")) MoveSpeed *= 2;
+
+        int childCount = WhitePieces.transform.childCount;
+
+        whitePieceArray = new GameObject[childCount];
+        blackPieceArray = new GameObject[childCount];
+        
+        for (int i = 0; i < childCount; i++)
+        {
+            whitePieceArray[i] = WhitePieces.transform.GetChild(i).gameObject;
+            blackPieceArray[i] = BlackPieces.transform.GetChild(i).gameObject;
+        }
     }
 
     // Update is called once per frame
@@ -50,7 +66,62 @@ public class PieceController : MonoBehaviour
         }
     }
 
-    void OnMouseDown()
+    public void UpdatePieceArray(string player, GameObject piece) {
+        if (player == "White") {
+            for (int i = 0; i < whitePieceArray.Length; i++) {
+                if (piece == whitePieceArray[i]) {
+                    whitePieceArray[i] = null;
+                    break;
+                }
+            }
+        }
+        else if (player == "Black") {
+            for (int i = 0; i < blackPieceArray.Length; i++) {
+                if (piece == blackPieceArray[i]) {
+                    blackPieceArray[i] = null;
+                    break;
+                }
+            }
+        }
+    }
+
+    public void OnMouseDown()
+    {
+        if (testbot.getGameType() == 2 || testbot.getGameType() == 1 && GameController.WhiteTurn == false) {
+            return;
+        }
+
+        if (GameController.SelectedPiece != null && GameController.SelectedPiece.GetComponent<PieceController>().IsMoving() == true)
+        {
+            // Prevent clicks during movement
+            return;
+        }
+
+        if (GameController.SelectedPiece == this.gameObject)
+        {
+            GameController.DeselectPiece();
+        }
+        else
+        {
+            if (GameController.SelectedPiece == null)
+            {
+                GameController.SelectPiece(this.gameObject);
+            }
+            else
+            {
+                if (this.tag == GameController.SelectedPiece.tag)
+                {
+                    GameController.SelectPiece(this.gameObject);
+                }
+                else if ((this.tag == "White" && GameController.SelectedPiece.tag == "Black") || (this.tag == "Black" && GameController.SelectedPiece.tag == "White"))
+                {
+                    GameController.SelectedPiece.GetComponent<PieceController>().MovePiece(this.transform.position);
+                }
+            }
+        }
+    }
+
+    public void BotOnMouseDown()
     {
         if (GameController.SelectedPiece != null && GameController.SelectedPiece.GetComponent<PieceController>().IsMoving() == true)
         {
@@ -85,12 +156,13 @@ public class PieceController : MonoBehaviour
     public bool MovePiece(Vector3 newPosition, bool castling = false)
     {
         GameObject encounteredEnemy = null;
-
+        //Debug.Log("POSITION: " + newPosition);
         newPosition.z = this.transform.position.z;
         this.oldPosition = this.transform.position;
-
+        
         if (castling || ValidateMovement(oldPosition, newPosition, out encounteredEnemy))
         {
+            //Debug.Log("MOVE");
             // Double-step
             if (this.name.Contains("Pawn") && Mathf.Abs(oldPosition.y - newPosition.y) == 2)
             {
@@ -102,6 +174,7 @@ public class PieceController : MonoBehaviour
                 this.Promote();
             }
             // Castling
+            /*
             else if (this.name.Contains("King") && Mathf.Abs(oldPosition.x - newPosition.x) == 2)
             {
                 if (oldPosition.x - newPosition.x == 2) // queenside castling
@@ -119,12 +192,22 @@ public class PieceController : MonoBehaviour
                     rook.GetComponent<PieceController>().MovePiece(newRookPosition, true);
                 }
             }
+            */
             this.moved = true;
 
             this.newPositionY = newPosition;
             this.newPositionY.x = this.transform.position.x;
             this.newPositionX = newPosition;
             MovingY = true; // Start movement
+
+            if (encounteredEnemy) {
+                if (encounteredEnemy.tag == "White") {
+                    UpdatePieceArray("White", encounteredEnemy);
+                }
+                else if (encounteredEnemy.tag == "Black") {
+                    UpdatePieceArray("Black", encounteredEnemy);
+                }
+            }
 
             Destroy(encounteredEnemy);
             return true;
@@ -140,7 +223,7 @@ public class PieceController : MonoBehaviour
     {
         bool isValid = false;
         encounteredEnemy = GetPieceOnPosition(newPosition.x, newPosition.y);
-
+        //Debug.Log("Validating...");
         if ((oldPosition.x == newPosition.x && oldPosition.y == newPosition.y) || encounteredEnemy != null && encounteredEnemy.tag == this.tag)
         {
             return false;
@@ -157,6 +240,7 @@ public class PieceController : MonoBehaviour
                 }
             }
             // Check for castling
+            /*
             else if (Mathf.Abs(oldPosition.x - newPosition.x) == 2 && oldPosition.y == newPosition.y && this.moved == false)
             {
                 if (oldPosition.x - newPosition.x == 2) // queenside castling
@@ -192,6 +276,7 @@ public class PieceController : MonoBehaviour
                     }
                 }
             }
+            */
         }
 
         if (this.name.Contains("Rook") || this.name.Contains("Queen"))
@@ -210,8 +295,10 @@ public class PieceController : MonoBehaviour
         if (this.name.Contains("Bishop") || this.name.Contains("Queen"))
         {
             // If the path is a straight diagonal line
-            if (Mathf.Abs(oldPosition.x - newPosition.x) == Mathf.Abs(oldPosition.y - newPosition.y) &&
-                CountPiecesBetweenPoints(oldPosition, newPosition, Direction.Diagonal) == 0)
+            if ((Mathf.Abs(oldPosition.x - newPosition.x) == Mathf.Abs(oldPosition.y - newPosition.y) || 
+                (Mathf.Abs(oldPosition.x - (newPosition.x - 8)) == Mathf.Abs(oldPosition.y - newPosition.y)) ||
+                (Mathf.Abs(oldPosition.x - (newPosition.x + 8)) == Mathf.Abs(oldPosition.y - newPosition.y)))
+                && CountPiecesBetweenPoints(oldPosition, newPosition, Direction.Diagonal) == 0)
             {
                 if (excludeCheck == true || (excludeCheck == false && IsInCheck(newPosition) == false))
                 {
@@ -223,8 +310,8 @@ public class PieceController : MonoBehaviour
         if (this.name.Contains("Knight"))
         {
             // If the path is an 'L' shape
-            if ((Mathf.Abs(oldPosition.x - newPosition.x) == 1 && Mathf.Abs(oldPosition.y - newPosition.y) == 2) ^
-                (Mathf.Abs(oldPosition.x - newPosition.x) == 2 && Mathf.Abs(oldPosition.y - newPosition.y) == 1))
+            if (((Mathf.Abs(oldPosition.x - newPosition.x) == 1 || Mathf.Abs(oldPosition.x - newPosition.x - 8) == 1 || Mathf.Abs(oldPosition.x - newPosition.x + 8) == 1) && Mathf.Abs(oldPosition.y - newPosition.y) == 2) ^
+                ((Mathf.Abs(oldPosition.x - newPosition.x) == 2 || Mathf.Abs(oldPosition.x - newPosition.x - 8) == 2 || Mathf.Abs(oldPosition.x - newPosition.x + 8) == 2) && Mathf.Abs(oldPosition.y - newPosition.y) == 1))
             {
                 if (excludeCheck == true || (excludeCheck == false && IsInCheck(newPosition) == false))
                 {
@@ -250,7 +337,8 @@ public class PieceController : MonoBehaviour
                     }
                 }
                 // If moving diagonally
-                else if (oldPosition.x == newPosition.x - 1 || oldPosition.x == newPosition.x + 1)
+                else if ((oldPosition.x == newPosition.x - 1 || oldPosition.x == newPosition.x + 1) || 
+                    (oldPosition.x == newPosition.x - 7 || oldPosition.x == newPosition.x + 7))
                 {
                     // Check if en passant is available
                     if (otherPiece == null)
@@ -286,7 +374,7 @@ public class PieceController : MonoBehaviour
                 }
             }
         }
-
+        
         return isValid;
     }
 
@@ -296,7 +384,7 @@ public class PieceController : MonoBehaviour
     /// <param name="position"></param>
     /// <param name="color">"White" or "Black" for specific color, null for any color</param>
     /// <returns>Returns the piece on a given position on the board, null if the square is empty</returns>
-    GameObject GetPieceOnPosition(float positionX, float positionY, string color = null)
+    public GameObject GetPieceOnPosition(float positionX, float positionY, string color = null)
     {
         if (color == null || color.ToLower() == "white")
         {
@@ -325,34 +413,123 @@ public class PieceController : MonoBehaviour
     int CountPiecesBetweenPoints(Vector3 pointA, Vector3 pointB, Direction direction)
     {
         int count = 0;
+        bool horizontalWrap = true;
+        bool pieceClear = true;
 
         foreach (Transform piece in WhitePieces.transform)
         {
-            if ((direction == Direction.Horizontal && piece.position.x > Mathf.Min(pointA.x, pointB.x) && piece.position.x < Mathf.Max(pointA.x, pointB.x) && piece.position.y == pointA.y) ||
-                (direction == Direction.Vertical && piece.position.y > Mathf.Min(pointA.y, pointB.y) && piece.position.y < Mathf.Max(pointA.y, pointB.y) && piece.position.x == pointA.x))
+            bool canWrap = false;
+
+            if (direction == Direction.Diagonal && piece.position.x > Mathf.Min(pointA.x, pointB.x) && piece.position.x < Mathf.Max(pointA.x, pointB.x))
             {
-                count++;
+                if (((pointA.y - pointA.x == pointB.y - (pointB.x - 8)) && (pointA.y + pointA.x == pointB.y + pointB.x) && (piece.position.y + piece.position.x == pointA.y + pointA.x)) ||
+                      ((pointA.y + pointA.x == pointB.y + (pointB.x + 8)) && (pointA.y - pointA.x == pointB.y - pointB.x) && (piece.position.y - piece.position.x == pointA.y - pointA.x)) ||
+                      ((pointA.y - pointA.x == pointB.y - (pointB.x + 8)) && (pointA.y + pointA.x == pointB.y + pointB.x) && (piece.position.y + piece.position.x == pointA.y + pointA.x)) ||
+                      ((pointA.y + pointA.x == pointB.y + (pointB.x - 8)) && (pointA.y - pointA.x == pointB.y - pointB.x) && (piece.position.y - piece.position.x == pointA.y - pointA.x))) {
+                    canWrap = true;
+                }
+            }
+            
+            if (((direction == Direction.Horizontal && piece.position.x > Mathf.Min(pointA.x, pointB.x) && piece.position.x < Mathf.Max(pointA.x, pointB.x) && piece.position.y == pointA.y) ||
+                (direction == Direction.Vertical && piece.position.y > Mathf.Min(pointA.y, pointB.y) && piece.position.y < Mathf.Max(pointA.y, pointB.y) && piece.position.x == pointA.x)) ||
+                ((direction == Direction.Horizontal && pointA.x > pointB.x && (piece.position.x < pointB.x || piece.position.x > pointA.x) && piece.position.y == pointA.y) ||
+                (direction == Direction.Horizontal && pointA.x < pointB.x && (piece.position.x > pointB.x || piece.position.x < pointA.x) && piece.position.y == pointA.y)))
+            {
+                if (((direction == Direction.Horizontal && pointA.x > pointB.x && (piece.position.x < pointB.x || piece.position.x > pointA.x) && piece.position.y == pointA.y) ||
+                    (direction == Direction.Horizontal && pointA.x < pointB.x && (piece.position.x > pointB.x || piece.position.x < pointA.x) && piece.position.y == pointA.y) ||
+                    (direction == Direction.Vertical)))
+                {
+                    //Debug.Log(piece.name + "Wrapper Piece Blocking");
+                    horizontalWrap = false;
+                }
+
+                if ((direction == Direction.Horizontal && piece.position.x > Mathf.Min(pointA.x, pointB.x) && piece.position.x < Mathf.Max(pointA.x, pointB.x) && piece.position.y == pointA.y) ||
+                    (direction == Direction.Vertical && piece.position.y > Mathf.Min(pointA.y, pointB.y) && piece.position.y < Mathf.Max(pointA.y, pointB.y) && piece.position.x == pointA.x)) 
+                {
+                    //Debug.Log(piece.name + " Piece Blocking");
+                    pieceClear = false;
+                }
+                else if (horizontalWrap == true) {
+                    //Debug.Log("No Blockers");
+                }
             }
             else if (direction == Direction.Diagonal && piece.position.x > Mathf.Min(pointA.x, pointB.x) && piece.position.x < Mathf.Max(pointA.x, pointB.x) &&
                      ((pointA.y - pointA.x == pointB.y - pointB.x && piece.position.y - piece.position.x == pointA.y - pointA.x) ||
                       (pointA.y + pointA.x == pointB.y + pointB.x && piece.position.y + piece.position.x == pointA.y + pointA.x)))
+            {
+                if (!canWrap) {
+                    count++;
+                }
+            }
+            else if ((direction == Direction.Diagonal && piece.position.x > Mathf.Min(pointA.x, pointB.x) && piece.position.x > Mathf.Max(pointA.x, pointB.x) || 
+                      direction == Direction.Diagonal && piece.position.x < Mathf.Min(pointA.x, pointB.x) && piece.position.x < Mathf.Max(pointA.x, pointB.x)) &&
+                     ((pointA.y - pointA.x == pointB.y - (pointB.x - 8) && ((piece.position.y - (piece.position.x - 8) == pointA.y - pointA.x) || (piece.position.y - piece.position.x == pointA.y - pointA.x))) ||
+                      (pointA.y + pointA.x == pointB.y + (pointB.x + 8) && ((piece.position.y + (piece.position.x + 8) == pointA.y + pointA.x) || (piece.position.y + piece.position.x == pointA.y + pointA.x))) ||
+                      (pointA.y - pointA.x == pointB.y - (pointB.x + 8) && ((piece.position.y - (piece.position.x + 8) == pointA.y - pointA.x) || (piece.position.y - piece.position.x == pointA.y - pointA.x))) ||
+                      (pointA.y + pointA.x == pointB.y + (pointB.x - 8) && ((piece.position.y + (piece.position.x - 8) == pointA.y + pointA.x) || (piece.position.y + piece.position.x == pointA.y + pointA.x)))))
             {
                 count++;
             }
         }
+
         foreach (Transform piece in BlackPieces.transform)
         {
-            if ((direction == Direction.Horizontal && piece.position.x > Mathf.Min(pointA.x, pointB.x) && piece.position.x < Mathf.Max(pointA.x, pointB.x) && piece.position.y == pointA.y) ||
-                (direction == Direction.Vertical && piece.position.y > Mathf.Min(pointA.y, pointB.y) && piece.position.y < Mathf.Max(pointA.y, pointB.y) && piece.position.x == pointA.x))
+            bool canWrap = false;
+
+            if (direction == Direction.Diagonal && piece.position.x > Mathf.Min(pointA.x, pointB.x) && piece.position.x < Mathf.Max(pointA.x, pointB.x))
             {
-                count++;
+                if (((pointA.y - pointA.x == pointB.y - (pointB.x - 8)) && (pointA.y + pointA.x == pointB.y + pointB.x) && (piece.position.y + piece.position.x == pointA.y + pointA.x)) ||
+                      ((pointA.y + pointA.x == pointB.y + (pointB.x + 8)) && (pointA.y - pointA.x == pointB.y - pointB.x) && (piece.position.y - piece.position.x == pointA.y - pointA.x)) ||
+                      ((pointA.y - pointA.x == pointB.y - (pointB.x + 8)) && (pointA.y + pointA.x == pointB.y + pointB.x) && (piece.position.y + piece.position.x == pointA.y + pointA.x)) ||
+                      ((pointA.y + pointA.x == pointB.y + (pointB.x - 8)) && (pointA.y - pointA.x == pointB.y - pointB.x) && (piece.position.y - piece.position.x == pointA.y - pointA.x))) {
+                        canWrap = true;
+                }
+            }
+
+            if (((direction == Direction.Horizontal && piece.position.x > Mathf.Min(pointA.x, pointB.x) && piece.position.x < Mathf.Max(pointA.x, pointB.x) && piece.position.y == pointA.y) ||
+                (direction == Direction.Vertical && piece.position.y > Mathf.Min(pointA.y, pointB.y) && piece.position.y < Mathf.Max(pointA.y, pointB.y) && piece.position.x == pointA.x)) ||
+                ((direction == Direction.Horizontal && pointA.x > pointB.x && (piece.position.x < pointB.x || piece.position.x > pointA.x) && piece.position.y == pointA.y) ||
+                (direction == Direction.Horizontal && pointA.x < pointB.x && (piece.position.x > pointB.x || piece.position.x < pointA.x) && piece.position.y == pointA.y)))
+            {
+                if (((direction == Direction.Horizontal && pointA.x > pointB.x && (piece.position.x < pointB.x || piece.position.x > pointA.x) && piece.position.y == pointA.y) ||
+                    (direction == Direction.Horizontal && pointA.x < pointB.x && (piece.position.x > pointB.x || piece.position.x < pointA.x) && piece.position.y == pointA.y) ||
+                    (direction == Direction.Vertical)))
+                {
+                    //Debug.Log(piece.name + "Wrapper Piece Blocking");
+                    horizontalWrap = false;
+                }
+
+                if ((direction == Direction.Horizontal && piece.position.x > Mathf.Min(pointA.x, pointB.x) && piece.position.x < Mathf.Max(pointA.x, pointB.x) && piece.position.y == pointA.y) ||
+                    (direction == Direction.Vertical && piece.position.y > Mathf.Min(pointA.y, pointB.y) && piece.position.y < Mathf.Max(pointA.y, pointB.y) && piece.position.x == pointA.x)) 
+                {
+                    //Debug.Log(piece.name + " Piece Blocking");
+                    pieceClear = false;
+                }
+                else if (horizontalWrap == true) {
+                    //Debug.Log("No Blockers");
+                }
             }
             else if (direction == Direction.Diagonal && piece.position.x > Mathf.Min(pointA.x, pointB.x) && piece.position.x < Mathf.Max(pointA.x, pointB.x) &&
                      ((pointA.y - pointA.x == pointB.y - pointB.x && piece.position.y - piece.position.x == pointA.y - pointA.x) ||
                       (pointA.y + pointA.x == pointB.y + pointB.x && piece.position.y + piece.position.x == pointA.y + pointA.x)))
             {
+                if (!canWrap) {
+                    count++;
+                }
+            }
+            else if ((direction == Direction.Diagonal && piece.position.x > Mathf.Min(pointA.x, pointB.x) && piece.position.x > Mathf.Max(pointA.x, pointB.x) || 
+                      direction == Direction.Diagonal && piece.position.x < Mathf.Min(pointA.x, pointB.x) && piece.position.x < Mathf.Max(pointA.x, pointB.x)) &&
+                     ((pointA.y - pointA.x == pointB.y - (pointB.x - 8) && ((piece.position.y - (piece.position.x - 8) == pointA.y - pointA.x) || (piece.position.y - piece.position.x == pointA.y - pointA.x))) ||
+                      (pointA.y + pointA.x == pointB.y + (pointB.x + 8) && ((piece.position.y + (piece.position.x + 8) == pointA.y + pointA.x) || (piece.position.y + piece.position.x == pointA.y + pointA.x))) ||
+                      (pointA.y - pointA.x == pointB.y - (pointB.x + 8) && ((piece.position.y - (piece.position.x + 8) == pointA.y - pointA.x) || (piece.position.y - piece.position.x == pointA.y - pointA.x))) ||
+                      (pointA.y + pointA.x == pointB.y + (pointB.x - 8) && ((piece.position.y + (piece.position.x - 8) == pointA.y + pointA.x) || (piece.position.y + piece.position.x == pointA.y + pointA.x)))))
+            {
                 count++;
             }
+        }
+
+        if (horizontalWrap == false && pieceClear == false) {
+            count++;
         }
 
         return count;
@@ -404,7 +581,15 @@ public class PieceController : MonoBehaviour
 
         // Move back to the real position
         this.transform.SetPositionAndRotation(currentPosition, this.transform.rotation);
+        check = isInCheck;
         return isInCheck;
+    }
+
+    public int GetInCheck() {
+        if (check) {
+            return 1;
+        }
+        return 0;
     }
 
     void MoveSideBySide()
@@ -462,6 +647,13 @@ public class PieceController : MonoBehaviour
     public bool IsMoving()
     {
         return MovingX || MovingY;
+    }
+
+    public void ResetPieces() {
+        int childCount = WhitePieces.transform.childCount;
+
+        whitePieceArray = new GameObject[childCount];
+        blackPieceArray = new GameObject[childCount];
     }
 
     enum Direction
